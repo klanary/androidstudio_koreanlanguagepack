@@ -392,7 +392,13 @@
     
     <extensions defaultExtensionNs="com.intellij">
         <languageBundle locale="ko" displayName="Korean"></languageBundle>
-        <applicationInitializedListener implementation="org.jetbrains.plugins.koreanlanguagepack.InlineActionTextOverrideApplier"/>
     </extensions>
+
+    <!-- ApplicationInitializedListener는 JetBrains 내부 전용 API라 마켓플레이스 리뷰에서
+         반려되어, 공개 API인 AppLifecycleListener.appFrameCreated로 교체함 -->
+    <applicationListeners>
+        <listener class="org.jetbrains.plugins.koreanlanguagepack.InlineActionTextOverrideApplier"
+                  topic="com.intellij.ide.AppLifecycleListener"/>
+    </applicationListeners>
 
 </idea-plugin>

@@ -1,6 +1,6 @@
 package org.jetbrains.plugins.koreanlanguagepack
 
-import com.intellij.ide.ApplicationInitializedListener
+import com.intellij.ide.AppLifecycleListener
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
@@ -17,11 +17,16 @@ import kotlinx.coroutines.launch
  *
  * Build Variants 같은 일부 도구창 액션은 프로젝트가 열리고 Gradle 동기화가 끝난
  * 뒤에야 등록되기 때문에, 앱 시작 직후 한 번만 시도하면 놓친다. 그래서 못 찾은
- * 액션들은 한동안 주기적으로 재시도하는데, 이 재시도는 execute() 자신을 오래
- * 붙잡아두면 IDE 시작 시퀀스가 느려지므로 별도 백그라운드 코루틴으로 분리한다.
+ * 액션들은 한동안 주기적으로 재시도하는데, 이 재시도는 appFrameCreated() 자신을
+ * 오래 붙잡아두면 IDE 시작 시퀀스가 느려지므로 별도 백그라운드 코루틴으로 분리한다.
+ *
+ * 원래는 ApplicationInitializedListener를 썼는데, 이건 JetBrains 내부 전용(internal)
+ * API라서 마켓플레이스 리뷰에서 반려됐다. AppLifecycleListener.appFrameCreated는
+ * "모든 플러그인 컴포넌트 초기화 후, 프레임이 뜨기 직전"에 불리는 공개(public) API라
+ * 타이밍이 사실상 동일하면서도 정식으로 지원되는 방식이라 이걸로 교체했다.
  */
-internal class InlineActionTextOverrideApplier : ApplicationInitializedListener {
-    override suspend fun execute() {
+internal class InlineActionTextOverrideApplier : AppLifecycleListener {
+    override fun appFrameCreated(commandLineArgs: MutableList<String>) {
         val actionManager = ActionManager.getInstance()
 
         var applied = 0
@@ -40,7 +45,7 @@ internal class InlineActionTextOverrideApplier : ApplicationInitializedListener 
         }
         LOG.info("한국어 언어팩: 인라인 액션 텍스트 $applied 건 적용, $missing 건은 아직 액션을 찾지 못함(백그라운드에서 재시도)")
 
-        // execute()는 여기서 바로 반환하고, 오래 걸릴 수 있는 재시도는
+        // appFrameCreated()는 여기서 바로 반환하고, 오래 걸릴 수 있는 재시도는
         // 앱 생명주기에 묶인 별도 코루틴에서 돌린다.
         //
         // (미번역 액션을 스캔해서 사용자 홈 디렉터리에 리포트를 남기던

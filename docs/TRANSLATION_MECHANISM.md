@@ -112,27 +112,34 @@ action and vice versa`). 그래서 원본이 `ActionGroup`인지 아닌지 반�
 `DYNAMIC_ACTION_TEXT_TRANSFORMS`에 넣지 말고, `NEVER_WRAP_ACTION_IDS`에
 먼저 추가해야 한다.**
 
-**⚠️ 재시도 루프는 반드시 `execute()` 밖에서 돌려야 한다**: 프로젝트가 열리고
+**⚠️ 재시도 루프는 반드시 진입점 메서드 밖에서 돌려야 한다**: 프로젝트가 열리고
 Gradle 동기화가 끝난 뒤에야 등록되는 액션(Build Variants 등)을 잡으려고 재시도
-루프를 넣었는데, 이걸 `ApplicationInitializedListener.execute()` 안에서 그대로
-돌렸더니 IDE 시작 시퀀스 자체가 느려지는 사고가 있었다 (`execute()`가 끝날 때까지
-IDE가 기다리는 것으로 보임). 그래서 `execute()`는 즉시 반환하는 1회성 작업만 하고,
-재시도 루프는 [`KoreanLanguagePackCoroutineScope`](../src/main/kotlin/org/jetbrains/plugins/koreanlanguagepack/KoreanLanguagePackCoroutineScope.kt)
+루프를 넣었는데, 이걸 진입점 메서드 안에서 그대로 돌렸더니 IDE 시작 시퀀스 자체가
+느려지는 사고가 있었다 (그 메서드가 끝날 때까지 IDE가 기다리는 것으로 보임). 그래서
+진입점 메서드는 즉시 반환하는 1회성 작업만 하고, 재시도 루프는
+[`KoreanLanguagePackCoroutineScope`](../src/main/kotlin/org/jetbrains/plugins/koreanlanguagepack/KoreanLanguagePackCoroutineScope.kt)
 (`@Service(Service.Level.APP)`, 앱 생명주기에 묶인 코루틴 스코프)로 분리해서
 백그라운드에서 돌게 했다.
+
+**⚠️ 시작 훅으로 `ApplicationInitializedListener`를 쓰면 안 된다**: 원래 이
+플러그인의 진입점은 `ApplicationInitializedListener.execute()`였는데, 이 인터페이스가
+JetBrains 내부 전용(internal) API라서 마켓플레이스 리뷰에서 반려됐다. 지금은
+`AppLifecycleListener.appFrameCreated()` (공개 API, `<applicationListeners>`로 등록,
+"모든 플러그인 컴포넌트 초기화 후 프레임이 뜨기 직전"에 호출되어 타이밍은 거의 동일)로
+교체했다. 앞으로 시작 훅이 또 필요해지면 internal 여부부터 확인할 것.
 
 ## 3. 파일 구조
 
 | 파일 | 역할 |
 |---|---|
 | `src/main/resources/messages/*.properties` (345개) | 경로 A. 원본 IntelliJ/Android Studio 리소스 번들의 번역본 |
-| `src/main/resources/META-INF/plugin.xml` | `<resource-bundle>` 목록 + `<languageBundle locale="ko">` + `<applicationInitializedListener>` 등록 |
+| `src/main/resources/META-INF/plugin.xml` | `<resource-bundle>` 목록 + `<languageBundle locale="ko">` + `<applicationListeners>`(`AppLifecycleListener`) 등록 |
 | `tools/translation/extract_inline_action_texts.py` | 설치된 Android Studio의 모든 plugin jar를 스캔해서 경로 B(인라인 text=) 대상을 찾아내는 도구 |
 | `tools/translation/apply_action_translations.py`, `tools/translation/action_translations_round2.py` | 경로 B/C 대상 액션 id → 한국어 번역 데이터 (사람이 직접 채워넣는 부분) |
 | `tools/translation/generate_action_override_kotlin.py` | 위 두 파이썬 딕셔너리를 병합해서 `InlineActionTextOverrides.kt`를 자동 생성 |
 | `InlineActionTextOverrides.kt` | (자동 생성) id → 번역 텍스트/설명 맵 |
 | `DynamicActionTextOverrides.kt` | 경로 C 전용: id → "원본 텍스트를 받아 한국어로 변환하는 함수" 맵 + `NEVER_WRAP_ACTION_IDS` (사람이 직접 작성) |
-| `InlineActionTextOverrideApplier.kt` | IDE 시작 시 실제로 위 데이터들을 적용하는 진입점 (`ApplicationInitializedListener`) |
+| `InlineActionTextOverrideApplier.kt` | IDE 시작 시 실제로 위 데이터들을 적용하는 진입점 (`AppLifecycleListener.appFrameCreated`) |
 | `KoreanLanguagePackCoroutineScope.kt` | 재시도 루프를 앱 시작 시퀀스와 분리해서 돌리기 위한 앱 레벨 코루틴 스코프 서비스 |
 | `DynamicActionTextWrapper.kt` / `DynamicActionGroupTextWrapper.kt` | 경로 C를 구현하는 래퍼 (액션용 / 그룹용) — `ActivateXxxToolWindow`류에는 절대 쓰면 안 됨 |
 | `UntranslatedActionScanner.kt` | IDE에 등록된 모든 액션·그룹을 실제로 훑어서 "아직 한글이 없는" 것을 찾아 사용자 홈 디렉터리에 리포트를 남기는 진단 도구 |
